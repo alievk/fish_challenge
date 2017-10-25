@@ -19,19 +19,20 @@ from nets import *
 from utils.util import sparse_to_dense, bgr_to_rgb
 
 
-FLAGS = easydict.EasyDict()
-FLAGS.data_path = '../data'
-FLAGS.image_set = 'train_fold0'
-FLAGS.train_dir = '../train_logs'
-FLAGS.max_steps = 100000
-FLAGS.net = 'resnet50'
-FLAGS.pretrained_model_path = '../data/models/ResNet/ResNet-50-weights.pkl'
-FLAGS.summary_step = 20
-FLAGS.summary_images_step = 2 # times summary_step
-FLAGS.checkpoint_step = 1000
-FLAGS.gpu = '0'
-FLAGS.num_thread = 0
-FLAGS.restore = True
+FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_string('data_path', 'data', """""")
+tf.app.flags.DEFINE_string('image_set', 'train_fold0', """""")
+tf.app.flags.DEFINE_string('train_dir', 'train_logs', """""")
+tf.app.flags.DEFINE_integer('batch_size', '10', """""")
+tf.app.flags.DEFINE_integer('max_steps', 100000, """""")
+tf.app.flags.DEFINE_string('config', 'fish_res50_config', """""")
+tf.app.flags.DEFINE_string('pretrained_model_path', 'data/models/ResNet/ResNet-50-weights.pkl', """""")
+tf.app.flags.DEFINE_integer('summary_step', 20, """""")
+tf.app.flags.DEFINE_integer('summary_images_step', 4, """times summary_step""")
+tf.app.flags.DEFINE_integer('checkpoint_step', 1000, """""")
+tf.app.flags.DEFINE_string('gpu', '0', """""")
+tf.app.flags.DEFINE_integer('num_thread', 0, """""")
+tf.app.flags.DEFINE_string('ckpt_dir', '', """""")
 
 
 def _draw_circle(im, circle_list, label_list, color=(0, 255, 0), cdict=None, scale=1.):
@@ -85,40 +86,17 @@ def _viz_prediction_result(model, images, shapes, labels, batch_det_shape,
     images[i] = im
 
 
-def train():
+def train(mc, log_dir):
   # seed = 1991
   # np.random.seed(seed)
   # tf.set_random_seed(seed)
 
-  os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu
-
   with tf.Graph().as_default():
-    assert FLAGS.net == 'vgg16' or FLAGS.net == 'resnet50' \
-        or FLAGS.net == 'squeezeDet' or FLAGS.net == 'squeezeDet+', \
-        'Selected neural net architecture not supported: {}'.format(FLAGS.net)
-    mc, model = None, None
-    if FLAGS.net == 'vgg16':
-      mc = fish_vgg16_config()
-      mc.IS_TRAINING = True
-      mc.PRETRAINED_MODEL_PATH = FLAGS.pretrained_model_path
+    model = None
+    if mc.NET == 'vgg16':
       model = VGG16ConvDet(mc)
-    elif FLAGS.net == 'resnet50':
-      mc = fish_res50_config()
-      mc.IS_TRAINING = True
-      mc.PRETRAINED_MODEL_PATH = FLAGS.pretrained_model_path
+    elif mc.NET == 'resnet50':
       model = ResNet50ConvDet(mc)
-    elif FLAGS.net == 'squeezeDet':
-      mc = fish_squeezeDet_config()
-      mc.IS_TRAINING = True
-      mc.PRETRAINED_MODEL_PATH = FLAGS.pretrained_model_path
-      model = SqueezeDet(mc)
-    elif FLAGS.net == 'squeezeDet+':
-      mc = fish_squeezeDetPlus_config()
-      mc.IS_TRAINING = True
-      mc.PRETRAINED_MODEL_PATH = FLAGS.pretrained_model_path
-      model = SqueezeDetPlus(mc)
-
-    mc.NUM_THREAD = FLAGS.num_thread
 
     imdb = fish_db(FLAGS.image_set, FLAGS.data_path, mc)
 
@@ -195,16 +173,17 @@ def train():
 
     step_start = 0
 
-    ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-    if ckpt and ckpt.model_checkpoint_path and FLAGS.restore:
-      saver.restore(sess, ckpt.model_checkpoint_path)
-      ckpt_step = int(os.path.basename(ckpt.model_checkpoint_path).split('ckpt-')[-1])
-      step_start = ckpt_step + 1
-
-    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
-
     init = tf.global_variables_initializer()
     sess.run(init)
+
+    if FLAGS.ckpt_dir:
+      ckpt = tf.train.get_checkpoint_state(FLAGS.ckpt_dir)
+      if ckpt and ckpt.model_checkpoint_path:
+        saver.restore(sess, ckpt.model_checkpoint_path)
+        ckpt_step = int(os.path.basename(ckpt.model_checkpoint_path).split('ckpt-')[-1])
+        step_start = ckpt_step + 1
+
+    summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
 
     coord = tf.train.Coordinator()
 
@@ -244,7 +223,7 @@ def train():
 
         summary_writer.add_summary(summary_str, step)
 
-        if step % FLAGS.summary_step * FLAGS.summary_images_step == 0:
+        if step % (FLAGS.summary_step * FLAGS.summary_images_step) == 0:
           _viz_prediction_result(model, image_per_batch, bbox_per_batch, label_per_batch,
                          det_boxes, det_class, det_probs)
           image_per_batch = bgr_to_rgb(image_per_batch)
@@ -265,27 +244,6 @@ def train():
               [model.train_op, model.loss, model.conf_loss, model.bbox_loss,
                model.class_loss], feed_dict=feed_dict)
 
-          # grads_vars = model.opt.compute_gradients(model.loss, tf.trainable_variables())
-          # for i, (grad, var) in enumerate(grads_vars):
-          #   print(var, ':', sess.run([tf.reduce_max(tf.abs(grad))], feed_dict=feed_dict))
-
-      # print(sess.run([tf.reduce_max(tf.abs(model.res4f))], feed_dict=feed_dict))
-      # print(sess.run([tf.reduce_max(tf.abs(model.pred_box_delta))], feed_dict=feed_dict))
-      # sys.stdout.flush()
-
-      #print(loss_value)
-      # if np.isnan(loss_value):
-      #   # checkpoint_path = os.path.join(FLAGS.train_dir, 'model_diverged.ckpt')
-      #   # saver.save(sess, checkpoint_path, global_step=step)
-      #   print(sess.run([
-      #     tf.reduce_sum(tf.square(model.ious - model.pred_conf)),
-      #     tf.reduce_max(model.ious),
-      #     tf.reduce_sum(tf.to_int32(tf.is_nan(model.ious))),
-      #     tf.reduce_max(tf.abs(model.pred_conf)),
-      #     tf.reduce_sum(tf.to_int32(tf.is_nan(model.pred_conf)))
-      #   ], feed_dict=feed_dict))
-      #   sys.stdout.flush()
-
       duration = time.time() - start_time
 
       assert not np.isnan(loss_value), \
@@ -304,9 +262,52 @@ def train():
 
       # Save the model checkpoint periodically.
       if step % FLAGS.checkpoint_step == 0 or (step + 1) == FLAGS.max_steps:
-        checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
+        checkpoint_path = os.path.join(log_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)
 
 
+def main(argv=None):  # pylint: disable=unused-argument
+  if 'src' not in os.listdir('.'):
+    os.chdir(os.path.join(os.path.dirname(__file__), '..'))
+
+  # create dir for this run
+  timestamp = datetime.now().strftime('%d-%m-%Y-%H%M')
+  log_dir = os.path.join(FLAGS.train_dir, timestamp)
+  if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+  os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu
+
+  assert FLAGS.config in globals().keys(), 'Unknown config {}'.format(FLAGS)
+  mc = globals()[FLAGS.config]()
+  mc.IS_TRAINING = True
+  mc.PRETRAINED_MODEL_PATH = FLAGS.pretrained_model_path
+  mc.BATCH_SIZE = FLAGS.batch_size
+  mc.NUM_THREAD = FLAGS.num_thread
+
+  # write description for this run
+  run_config_path = os.path.join(log_dir, 'config.txt')
+  with open(run_config_path, 'w') as fout:
+    fout.write('-RUN FLAGS\n')
+    for k in sorted(FLAGS.__flags.keys()):
+      fout.write('{}: {}\n'.format(k, str(FLAGS.__flags[k])))
+    fout.write('\n')
+
+    fout.write('-MODEL CONFIG\n')
+    for k in sorted(mc.__dict__.keys()):
+      v = mc.__dict__[k]
+      if isinstance(v, np.ndarray):
+        fout.write('{}: {}\n'.format(k, v.shape))
+      else:
+        fout.write('{}: {}\n'.format(k, v))
+
+  # print run flags, model config, ...
+  with open(run_config_path) as fin:
+    for line in fin.readlines():
+      print(line.strip())
+
+  train(mc, log_dir)
+
+
 if __name__ == '__main__':
-  train()
+  tf.app.run()
