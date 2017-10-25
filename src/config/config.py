@@ -50,7 +50,7 @@ def base_model_config(dataset):
   cfg.ANCHOR_PER_GRID = -1
 
   # batch size
-  cfg.BATCH_SIZE = 20
+  cfg.BATCH_SIZE = 1
 
   # Only keep boxes with probability higher than this threshold
   cfg.PROB_THRESH = 0.005
@@ -132,5 +132,8 @@ def base_model_config(dataset):
 
   # indicate if the model is in training mode
   cfg.IS_TRAINING = False
+
+  # network name
+  cfg.NET = ''
 
   return cfg
