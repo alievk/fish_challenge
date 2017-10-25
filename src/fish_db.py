@@ -5,6 +5,8 @@ import cv2
 import os
 import pandas as pd
 
+from imgaug import augmenters as iaa
+
 from utils.util import batch_iou_circle as batch_iou
 
 pjoin = os.path.join
@@ -19,7 +21,9 @@ class fish_db(object):
 
     # batch reader
     self._perm_idx = None
-    self._cur_idx = 0
+    self._cur_img_idx = 0
+
+    self._cur_video_idx = 0
 
     self._image_idx, self._objects = self._load_annotation(True)
     self._shuffle_image_idx()
@@ -31,7 +35,7 @@ class fish_db(object):
     assert exists(anno_path)
     anno = pd.read_csv(anno_path)
 
-    anno.drop
+    self._video_ids = list(set(anno.video_id))
 
     if not keep_nofish_frames:
       anno.dropna(inplace=True)
@@ -53,28 +57,63 @@ class fish_db(object):
   def _shuffle_image_idx(self):
     self._perm_idx = [self._image_idx[i] for i in
         np.random.permutation(np.arange(len(self._image_idx)))]
-    self._cur_idx = 0
+    self._cur_img_idx = 0
 
   def _image_path_at(self, idx):
     _, video_name, frame = idx
     return pjoin(self._data_root, 'frames', video_name, str(frame) + '.jpg')
 
-  def read_batch(self, shuffle=True, normalize=True):
+  def preprocess_image(self, im):
+    mc = self.mc
+    # resize
+    if im.shape[:2] != (mc.IMAGE_HEIGHT, mc.IMAGE_WIDTH):
+      im = cv2.resize(im, (mc.IMAGE_WIDTH, mc.IMAGE_HEIGHT))
+
+    # normalize
+    im = im.astype(np.float32)
+    im -= mc.BGR_MEANS
+
+    return im
+
+  @staticmethod
+  def augment(im, p_fliplr=0.5, p_blur=0.5, p_brightness=0.5, p_contrast=0.5):
+    has_fliplr = p_fliplr > np.random.rand(1)
+    has_blur = p_blur > np.random.rand(1)
+    has_brightness = p_brightness > np.random.rand(1)
+    has_contrast = p_contrast > np.random.rand(1)
+
+    # fliplr
+    if has_fliplr:
+      im = iaa.Fliplr(p=1, deterministic=True).augment_image(im)
+
+    # gaussian blur
+    if has_blur:
+      im = iaa.GaussianBlur(sigma=(1, 2.5), deterministic=True).augment_image(im)
+
+    if has_brightness:
+      im = iaa.Multiply(mul=(0.5, 1.2), deterministic=True).augment_image(im)
+
+    if has_contrast:
+      im = iaa.ContrastNormalization(alpha=(0.4, 1.2), deterministic=True).augment_image(im)
+
+    return im, (has_fliplr, has_blur, has_brightness, has_contrast)
+
+  def read_batch(self, shuffle=True):
     mc = self.mc
 
     if shuffle:
-      if self._cur_idx + mc.BATCH_SIZE >= len(self._image_idx):
+      if self._cur_img_idx + mc.BATCH_SIZE >= len(self._image_idx):
         self._shuffle_image_idx()
-      batch_idx = self._perm_idx[self._cur_idx:self._cur_idx+mc.BATCH_SIZE]
-      self._cur_idx += mc.BATCH_SIZE
+      batch_idx = self._perm_idx[self._cur_img_idx:self._cur_img_idx + mc.BATCH_SIZE]
+      self._cur_img_idx += mc.BATCH_SIZE
     else:
-      if self._cur_idx + mc.BATCH_SIZE >= len(self._image_idx):
-        batch_idx = self._image_idx[self._cur_idx:] \
-            + self._image_idx[:self._cur_idx + mc.BATCH_SIZE-len(self._image_idx)]
-        self._cur_idx += mc.BATCH_SIZE - len(self._image_idx)
+      if self._cur_img_idx + mc.BATCH_SIZE >= len(self._image_idx):
+        batch_idx = self._image_idx[self._cur_img_idx:] \
+            + self._image_idx[:self._cur_img_idx + mc.BATCH_SIZE - len(self._image_idx)]
+        self._cur_img_idx += mc.BATCH_SIZE - len(self._image_idx)
       else:
-        batch_idx = self._image_idx[self._cur_idx:self._cur_idx+mc.BATCH_SIZE]
-        self._cur_idx += mc.BATCH_SIZE
+        batch_idx = self._image_idx[self._cur_img_idx:self._cur_img_idx + mc.BATCH_SIZE]
+        self._cur_img_idx += mc.BATCH_SIZE
 
     image_per_batch = []
     label_per_batch = []
@@ -88,16 +127,16 @@ class fish_db(object):
       assert exists(im_path), '{} not found'.format(im_path)
       im = cv2.imread(im_path)
 
-      # resize
-      if im.shape[:2] != (mc.IMAGE_HEIGHT, mc.IMAGE_WIDTH):
-        im = cv2.resize(im, (mc.IMAGE_WIDTH, mc.IMAGE_HEIGHT))
+      im, aug_flag = self.augment(im)
+      has_fliplr, _, _, _ = aug_flag
 
-      if normalize:
-        im = im.astype(np.float32, copy=False)
-        im -= mc.BGR_MEANS
+      im = self.preprocess_image(im)
 
       raw_idx = idx[0]
       cx, cy, r, label = self._objects[raw_idx]
+
+      if has_fliplr:
+        cx = im.shape[1] - cx - 1
 
       label_per_image = []
       bbox_per_image = []
@@ -126,3 +165,14 @@ class fish_db(object):
 
     return image_per_batch, label_per_batch, delta_per_batch, \
            aidx_per_batch, bbox_per_batch
+
+  def num_videos(self):
+    return len(self._video_ids)
+
+  def _video_path_at(self, idx):
+    return pjoin(self._data_root, 'train_videos', self._video_ids[idx] + '.mp4')
+
+  def next_video(self):
+    idx = self._cur_video_idx
+    self._cur_video_idx = (self._cur_video_idx + 1) % len(self._video_ids)
+    return self._video_path_at(idx), idx
