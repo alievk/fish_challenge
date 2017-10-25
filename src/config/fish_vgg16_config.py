@@ -8,6 +8,8 @@ def fish_vgg16_config():
   """Specify the parameters to tune below."""
   mc                       = base_model_config('fish')
 
+  mc.NET                   = 'vgg16'
+
   mc.IMAGE_WIDTH           = 1280
   mc.IMAGE_HEIGHT          = 720
   mc.BATCH_SIZE            = 1
