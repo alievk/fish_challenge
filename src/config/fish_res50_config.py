@@ -8,12 +8,14 @@ def fish_res50_config():
   """Specify the parameters to tune below."""
   mc                       = base_model_config('fish')
 
+  mc.NET                   = 'resnet50'
+
   mc.IMAGE_WIDTH           = 1280
   mc.IMAGE_HEIGHT          = 720
   mc.BATCH_SIZE            = 10
 
   mc.WEIGHT_DECAY          = 0.0001#0.0001
-  mc.LEARNING_RATE         = 1e-3#0.02
+  mc.LEARNING_RATE         = 0.01#0.02
   mc.DECAY_STEPS           = 10000
   mc.MAX_GRAD_NORM         = 1.0
   mc.MOMENTUM              = 0.9
