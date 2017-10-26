@@ -17,8 +17,6 @@ from fish_db import fish_db
 from config import *
 from nets import *
 
-import metrics
-
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('data_path', 'data', """""")
