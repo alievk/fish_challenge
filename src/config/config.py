@@ -22,6 +22,8 @@ def base_model_config(dataset):
   # number of categories to classify
   cfg.CLASSES = len(cfg.CLASS_NAMES)
 
+  cfg.CLASS_TO_ID = dict(zip(cfg.CLASS_NAMES, range(cfg.CLASSES)))
+
   # ROI pooling output width
   cfg.GRID_POOL_WIDTH = 7
 

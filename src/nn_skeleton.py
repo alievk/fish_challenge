@@ -244,16 +244,16 @@ class ModelSkeleton:
     with tf.variable_scope('probability') as scope:
       self._activation_summary(self.pred_class_probs, 'class_probs')
 
-      probs = tf.multiply(
-          self.pred_class_probs,
-          tf.reshape(self.pred_conf, [mc.BATCH_SIZE, mc.ANCHORS, 1]),
-          name='final_class_prob'
+      self.post_class_probs = tf.multiply(
+        self.pred_class_probs,
+        tf.reshape(self.pred_conf, [mc.BATCH_SIZE, mc.ANCHORS, 1]),
+        name='posterior_class_prob'
       )
 
-      self._activation_summary(probs, 'final_class_prob')
+      self._activation_summary(self.post_class_probs, 'posterior_class_prob')
 
-      self.det_probs = tf.reduce_max(probs, 2, name='score')
-      self.det_class = tf.argmax(probs, 2, name='class_idx')
+      self.det_probs = tf.reduce_max(self.post_class_probs, 2, name='score')
+      self.det_class = tf.argmax(self.post_class_probs, 2, name='class_idx')
 
   def _add_loss_graph(self):
     """Define the loss operation."""

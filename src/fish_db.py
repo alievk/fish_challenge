@@ -14,7 +14,7 @@ exists = os.path.exists
 
 
 class fish_db(object):
-  def __init__(self, dataset, data_root, mc):
+  def __init__(self, dataset, data_root, mc, keep_nofish_frames=True):
     self._dataset = dataset
     self._data_root = data_root
     self.mc = mc
@@ -25,7 +25,7 @@ class fish_db(object):
 
     self._cur_video_idx = 0
 
-    self._image_idx, self._objects = self._load_annotation(True)
+    self._image_idx, self._objects = self._load_annotation(keep_nofish_frames)
     self._shuffle_image_idx()
 
   def _load_annotation(self, keep_nofish_frames=False):
@@ -50,8 +50,6 @@ class fish_db(object):
     labels[anno.fish_number.isnull()] = 'species_none'
     objects = zip(cx, cy, r, labels)
 
-    self._label_to_id = dict(zip(mc.CLASS_NAMES, range(mc.CLASSES)))
-
     return image_idx, objects
 
   def _shuffle_image_idx(self):
@@ -63,8 +61,8 @@ class fish_db(object):
     _, video_name, frame = idx
     return pjoin(self._data_root, 'frames', video_name, str(frame) + '.jpg')
 
-  def preprocess_image(self, im):
-    mc = self.mc
+  @staticmethod
+  def preprocess_image(mc, im):
     # resize
     if im.shape[:2] != (mc.IMAGE_HEIGHT, mc.IMAGE_WIDTH):
       im = cv2.resize(im, (mc.IMAGE_WIDTH, mc.IMAGE_HEIGHT))
@@ -97,6 +95,36 @@ class fish_db(object):
       im = iaa.ContrastNormalization(alpha=(0.4, 1.2), deterministic=True).augment_image(im)
 
     return im, (has_fliplr, has_blur, has_brightness, has_contrast)
+
+  def read_image_batch(self, shuffle=True):
+    mc = self.mc
+
+    if shuffle:
+      if self._cur_img_idx + mc.BATCH_SIZE >= len(self._image_idx):
+        self._shuffle_image_idx()
+      batch_idx = self._perm_idx[self._cur_img_idx:self._cur_img_idx + mc.BATCH_SIZE]
+      self._cur_img_idx += mc.BATCH_SIZE
+    else:
+      if self._cur_img_idx + mc.BATCH_SIZE >= len(self._image_idx):
+        batch_idx = self._image_idx[self._cur_img_idx:] \
+            + self._image_idx[:self._cur_img_idx + mc.BATCH_SIZE - len(self._image_idx)]
+        self._cur_img_idx += mc.BATCH_SIZE - len(self._image_idx)
+      else:
+        batch_idx = self._image_idx[self._cur_img_idx:self._cur_img_idx + mc.BATCH_SIZE]
+        self._cur_img_idx += mc.BATCH_SIZE
+
+    images = []
+    video_ids = []
+    frame_ids = []
+    for idx in batch_idx:
+      im_path = self._image_path_at(idx)
+      assert exists(im_path), '{} not found'.format(im_path)
+      im = self.preprocess_image(mc, cv2.imread(im_path))
+      images.append(im)
+      video_ids.append(idx[1])
+      frame_ids.append(idx[2])
+
+    return images, video_ids, frame_ids
 
   def read_batch(self, shuffle=True):
     mc = self.mc
@@ -154,7 +182,7 @@ class fish_db(object):
         delta[2] = np.log(r/ar)
         delta_per_image.append(delta)
 
-        label_per_image.append(self._label_to_id[label])
+        label_per_image.append(mc.CLASS_TO_ID[label])
         bbox_per_image.append([cx, cy, r])
 
       image_per_batch.append(im)
