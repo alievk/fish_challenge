@@ -1,9 +1,11 @@
 import os, sys
-import easydict
+
+if 'src' not in os.listdir('.'):
+  os.chdir(os.path.join(os.path.dirname(__file__), '..'))
 
 # We assume OpenCV with FFMPEG support is build and placed in ./opencv
-sys.path.insert(0, './opencv/release/lib')
-sys.path.append('../metrics')
+sys.path.insert(0, 'opencv/release/lib')
+sys.path.append('metrics')
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -18,13 +20,13 @@ from nets import *
 import metrics
 
 
-FLAGS = easydict.EasyDict()
-FLAGS.data_path = 'data'
-FLAGS.dataset = 'train_videos' # can be {train_foldX, valid_foldX} or {train_videos, test_videos}
-FLAGS.video_names = 'data/some_train_videos.txt'
-FLAGS.ckpt_path = 'train_logs/25-10-2017-1153/model.ckpt-39000'
-FLAGS.batch_size = 1
-FLAGS.gpu = '0'
+FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_string('data_path', 'data', """""")
+tf.app.flags.DEFINE_string('dataset', '', """can be {train_foldX, valid_foldX} or {train_videos, test_videos}""")
+tf.app.flags.DEFINE_string('video_names', '', """""")
+tf.app.flags.DEFINE_string('ckpt_path', '', """""")
+tf.app.flags.DEFINE_integer('batch_size', 1, """""")
+tf.app.flags.DEFINE_string('gpu', '0', """""")
 
 
 COLUMNS = ['row_id','frame','video_id','fish_number','length','species_fourspot','species_grey sole',
@@ -115,9 +117,6 @@ def eval_frames(sess, model, imdb, results_dir):
 
 
 def main(args=None):
-  if 'src' not in os.listdir('.'):
-    os.chdir(os.path.join(os.path.dirname(__file__), '..'))
-
   os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu
 
   results_dir = os.path.join(os.path.dirname(FLAGS.ckpt_path), 'results')
