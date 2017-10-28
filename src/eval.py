@@ -7,6 +7,7 @@ if 'src' not in os.listdir('.'):
 sys.path.insert(0, 'opencv/release/lib')
 sys.path.append('metrics')
 import cv2
+print 'opencv:', cv2.__file__
 import numpy as np
 import tensorflow as tf
 import time
@@ -36,6 +37,7 @@ def eval_video(sess, model, video_path, preprocess_func, label_to_id_map):
   detections = defaultdict(list)
 
   cap = cv2.VideoCapture(video_path)
+  assert cap.isOpened()
 
   print 'Processing {}'.format(video_path)
 
@@ -60,7 +62,7 @@ def eval_video(sess, model, video_path, preprocess_func, label_to_id_map):
 
     b = 0 # in-batch idx
     best_det_idx = det_probs[b, :].argmax()
-    post_class_probs[b, best_det_idx] /= post_class_probs[b, best_det_idx].sum()
+    #post_class_probs[b, best_det_idx] /= post_class_probs[b, best_det_idx].sum()
     for c in mc.CLASS_NAMES:
       label_id = label_to_id_map[c]
       detections[c].append(post_class_probs[b, best_det_idx, label_id])
@@ -129,6 +131,7 @@ def main(args=None):
 
     sess_config = tf.ConfigProto()
     sess_config.allow_soft_placement = True
+    sess_config.gpu_options.allow_growth = True
     sess = tf.Session(config=sess_config)
 
     saver = tf.train.Saver(model.model_params)
