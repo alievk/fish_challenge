@@ -33,6 +33,7 @@ tf.app.flags.DEFINE_integer('checkpoint_step', 1000, """""")
 tf.app.flags.DEFINE_string('gpu', '0', """""")
 tf.app.flags.DEFINE_integer('num_thread', 0, """""")
 tf.app.flags.DEFINE_string('ckpt_dir', '', """""")
+tf.app.flags.DEFINE_bool('full_gram', False, """""")
 
 
 def _draw_circle(im, circle_list, label_list, color=(0, 255, 0), cdict=None, scale=1.):
@@ -166,7 +167,10 @@ def train(mc, log_dir):
       except Exception, e:
         coord.request_stop(e)
 
-    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+    sess_config = tf.ConfigProto()
+    sess_config.allow_soft_placement = True
+    sess_config.gpu_options.allow_growth = not FLAGS.full_gram
+    sess = tf.Session(config=sess_config)
 
     saver = tf.train.Saver(tf.global_variables())
     summary_op = tf.summary.merge_all()
