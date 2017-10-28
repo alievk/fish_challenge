@@ -28,8 +28,12 @@ tf.app.flags.DEFINE_integer('batch_size', 1, """""")
 tf.app.flags.DEFINE_string('gpu', '0', """""")
 
 
-COLUMNS = ['row_id','frame','video_id','fish_number','length','species_fourspot','species_grey sole',
-           'species_other','species_plaice','species_summer','species_windowpane','species_winter']
+COLUMNS = ['row_id','frame','video_id','fish_number','length',
+           'species_fourspot','species_grey sole', 'species_other',
+           'species_plaice','species_summer','species_windowpane','species_winter']
+COLUMNS_VIDEO = ['row_id','frame','video_id','fish_number','length', 'cx', 'cy',
+                 'species_fourspot','species_grey sole', 'species_other',
+                 'species_plaice','species_summer','species_windowpane','species_winter']
 
 
 def eval_video(sess, model, video_path, preprocess_func, label_to_id_map):
@@ -68,11 +72,8 @@ def eval_video(sess, model, video_path, preprocess_func, label_to_id_map):
       detections[c].append(post_class_probs[b, best_det_idx, label_id])
     detections['frame'].append(frame_num)
     detections['length'].append(2 * det_boxes[b, best_det_idx, 2]) # note, we predict radius, they need diameter
-
-    # cx, cy, r = det_boxes[b, best_det_idx]
-    # cv2.circle(frame, (int(cx), int(cy)), int(r), (255,0,0), 2)
-    # cv2.imwrite('/tmp/{}.jpg'.format(os.path.basename(video_path)+str(frame_num)), frame)
-    # print frame_num, mc.CLASS_NAMES[det_class[b, best_det_idx]], det_probs[b, best_det_idx]
+    detections['cx'].append(det_boxes[b, best_det_idx, 0])
+    detections['cy'].append(det_boxes[b, best_det_idx, 1])
 
     frame_num += 1
 
@@ -158,7 +159,7 @@ def main(args=None):
                                            fish_db.preprocess_image, mc.CLASS_TO_ID)
 
         detections['video_id'] = [video_id] * frame_num
-        df = pd.DataFrame(detections, columns=COLUMNS)
+        df = pd.DataFrame(detections, columns=COLUMNS_VIDEO)
         df.to_csv(os.path.join(results_dir, '{}_{}.csv'.format(FLAGS.dataset, video_id)), index=False)
 
 
