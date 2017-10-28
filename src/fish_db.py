@@ -74,15 +74,20 @@ class fish_db(object):
     return im
 
   @staticmethod
-  def augment(im, p_fliplr=0.5, p_blur=0.5, p_brightness=0.5, p_contrast=0.5):
+  def augment(im, p_fliplr=0.5, p_flipud=0.5, p_blur=0.5, p_brightness=0.5, p_contrast=0.5):
     has_fliplr = p_fliplr > np.random.rand(1)
+    has_flipud = p_flipud > np.random.rand(1)
     has_blur = p_blur > np.random.rand(1)
     has_brightness = p_brightness > np.random.rand(1)
     has_contrast = p_contrast > np.random.rand(1)
-
+    
     # fliplr
     if has_fliplr:
       im = iaa.Fliplr(p=1, deterministic=True).augment_image(im)
+      
+    # flipud
+    if has_flipud:
+      im = iaa.Flipud(p=1, deterministic=True).augment_image(im)
 
     # gaussian blur
     if has_blur:
@@ -94,7 +99,7 @@ class fish_db(object):
     if has_contrast:
       im = iaa.ContrastNormalization(alpha=(0.4, 1.2), deterministic=True).augment_image(im)
 
-    return im, (has_fliplr, has_blur, has_brightness, has_contrast)
+    return im, (has_fliplr, has_flipud, has_blur, has_brightness, has_contrast)
 
   def read_image_batch(self, shuffle=True):
     mc = self.mc
@@ -156,15 +161,18 @@ class fish_db(object):
       im = cv2.imread(im_path)
 
       im, aug_flag = self.augment(im)
-      has_fliplr, _, _, _ = aug_flag
+      has_fliplr, has_flipud, _, _, _ = aug_flag
 
-      im = self.preprocess_image(im)
+      im = self.preprocess_image(mc, im)
 
       raw_idx = idx[0]
       cx, cy, r, label = self._objects[raw_idx]
 
       if has_fliplr:
         cx = im.shape[1] - cx - 1
+        
+      if has_flipud:
+        cy = im.shape[0] - cy - 1
 
       label_per_image = []
       bbox_per_image = []
