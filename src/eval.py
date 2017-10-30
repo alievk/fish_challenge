@@ -71,6 +71,8 @@ def eval_video(sess, model, video_path, preprocess_func, label_to_id_map):
     if not image_batch:
       break
 
+    if len(image_batch) != mc.BATCH_SIZE:
+      image_batch += [np.zeros_like(image_batch[0]) for jj in range(mc.BATCH_SIZE - len(image_batch))]
     image_batch = np.concatenate(image_batch, axis=0)
 
     det_boxes, post_class_probs, det_probs, det_class = sess.run(
